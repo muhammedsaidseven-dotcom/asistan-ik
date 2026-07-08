@@ -71,7 +71,7 @@ def get_base64_of_bin_file(bin_file):
     except Exception:
         return ""
 
-logo_path = "/Users/macbookair/Library/CloudStorage/OneDrive-SeatechBilişim/Yapay Zeka Çalışmaları/HR/Ay Äaßrç Logo 6.png"
+logo_path = "logo.png"
 logo_b64 = get_base64_of_bin_file(logo_path)
 
 # --- GLOBAL BILGI CSS INJECTION ---
