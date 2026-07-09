@@ -15,6 +15,10 @@ import streamlit as st
 import os
 from io import BytesIO
 import hr_db
+import importlib
+importlib.reload(hr_db)
+
+import streamlit as st
 
 # Initialize database
 hr_db.init_db()
@@ -45,22 +49,39 @@ def safe_generate(model, prompt_or_parts, enable_search=False):
                 
         except Exception as e:
             err_msg = str(e).lower()
-            # 404 (bulunamadı) veya 429 (kota doldu) hatalarında otomatik diğer modele geç
-            if "429" in err_msg or "resourceexhausted" in err_msg or "404" in err_msg or "not found" in err_msg or "not supported" in err_msg:
+            # 404 (bulunamadı) veya 429 (kota doldu) veya 400 (desteklenmeyen özellik) hatalarında otomatik diğer modele geç
+            if "429" in err_msg or "resourceexhausted" in err_msg or "404" in err_msg or "not found" in err_msg or "not supported" in err_msg or "image input" in err_msg or "400" in err_msg:
                 if attempt < len(fallback_models):
                     next_model_name = fallback_models[attempt]
-                    st.toast(f"Otomatik Geçiş: '{next_model_name}' deneniyor...", icon="🔄")
+                    st.toast(f"Mevcut modelde kısıtlama yaşandı. '{next_model_name}' modeline geçiliyor...", icon="🔄")
                     current_model = genai.GenerativeModel(next_model_name)
                 else:
-                    st.error("Hesabınızdaki kullanılabilir tüm yapay zeka modelleri denendi ancak erişim sağlanamadı. Lütfen API anahtarınızı kontrol edin.")
+                    st.error("Hesabınızdaki tüm yapay zeka modelleri denendi ancak işlem gerçekleştirilemedi. Lütfen farklı bir dosya veya veri ile deneyin.")
                     st.stop()
             else:
-                st.error(f"Yapay zeka yanıt üretirken beklenmeyen hata: {e}")
+                st.error("Yapay zeka analiz aşamasında geçici bir sorun yaşadı. Lütfen tekrar deneyin.")
                 st.stop()
-
 st.set_page_config(page_title="AY Çağrı Merkezi - İK Disiplin", layout="wide", page_icon="🏢")
 
 import base64
+import io
+import json
+
+def save_current_state_to_db():
+    if st.session_state.get('current_record_id'):
+        state_to_save = {
+            "step": st.session_state.step,
+            "tutanak_text": st.session_state.get('tutanak_text', ''),
+            "tutanak_summary": st.session_state.get('tutanak_summary', ''),
+            "savunma_istem_metni": st.session_state.get('savunma_istem_metni', ''),
+            "savunma_text": st.session_state.get('savunma_text', ''),
+            "karar_sonucu": st.session_state.get('karar_sonucu', ''),
+            "secilen_karar": st.session_state.get('secilen_karar', ''),
+            "nihai_belge": st.session_state.get('nihai_belge', ''),
+            "yonetmelik_text": st.session_state.get('yonetmelik_text', '')
+        }
+        hr_db.update_state(st.session_state.current_record_id, json.dumps(state_to_save))
+
 import urllib.request
 
 def get_base64_of_bin_file(bin_file):
@@ -439,6 +460,7 @@ if st.session_state.role == "admin":
 
 # --- DASHBOARD SUMMARY ---
 stats = hr_db.get_summary_stats()
+devam_eden_total = stats['tutanak'] + stats['bekleyen'] + stats['alindi']
 
 st.markdown(f"""
 <div style="display: flex; gap: 15px; margin-bottom: 20px;">
@@ -446,13 +468,14 @@ st.markdown(f"""
         <div style="color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Toplam Dosya</div>
         <div style="color: #111827; font-size: 28px; font-weight: 800; margin-top: 5px;">{stats['total']}</div>
     </div>
-    <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center;">
-        <div style="color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Tutanak Tutuldu</div>
-        <div style="color: #F05A28; font-size: 28px; font-weight: 800; margin-top: 5px;">{stats['tutanak']}</div>
-    </div>
-    <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center;">
-        <div style="color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Savunma Beklenen</div>
-        <div style="color: #F59E0B; font-size: 28px; font-weight: 800; margin-top: 5px;">{stats['bekleyen']}</div>
+    <div style="flex: 1.5; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center;">
+        <div style="color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Devam Eden Süreçler</div>
+        <div style="color: #F59E0B; font-size: 28px; font-weight: 800; margin-top: 5px;">{devam_eden_total}</div>
+        <div style="color: #6B7280; font-size: 12px; margin-top: 8px; font-weight: 500;">
+            <span style="color: #4B5563;">📝 {stats['tutanak']} Tutanak Aşaması</span> &nbsp;|&nbsp; 
+            <span style="color: #D97706;">⏳ {stats['bekleyen']} Savunma Bekliyor</span> &nbsp;|&nbsp; 
+            <span style="color: #1D4ED8;">🛡️ {stats['alindi']} Savunma Alındı</span>
+        </div>
     </div>
     <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center;">
         <div style="color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Sonuçlanan</div>
@@ -651,6 +674,7 @@ with st.expander("📝 2. Tutanak Yükleme ve Analizi", expanded=(st.session_sta
                     if not st.session_state.get('current_record_id'):
                         rec_id = hr_db.create_record(emp_name, emp_details, "Tutanak Tutuldu")
                         st.session_state.current_record_id = rec_id
+                    save_current_state_to_db()
                         
                     st.success("Tutanak analiz edildi ve sistem kaydı otomatik oluşturuldu!")
                     
@@ -683,6 +707,8 @@ with st.expander("⚖️ 3. Savunma İstem Belgesi", expanded=(st.session_state.
                 5. Bu yazıyı hazırlarken güncel mevzuat.gov.tr kaynaklarını ve İş Kanunu prensiplerini dikkate alan bir İş Hukukçusu gibi davran.
                 6. (ÇOK ÖNEMLİ) Aşağıda 'İlgili Yönetmelikler ve Kanunlar' kısmında sana sunulan (İş Kanunu, Personel Disiplin Yönetmeliği, Personel Sözleşmesi vb.) TÜM metinleri dikkate al. Çalışanın KESİNLİKLE bu metinlerin tam olarak hangi maddesini ve bendini ihlal ettiğini açıkça yazarak metnin içinde atıfta bulun (Örn: 'Şirket Personel Disiplin Yönetmeliği Madde 4.2 ve İş Kanunu Madde 25/II uyarınca...'). 
                 7. (ÖNEMLİ) Farklı konulara veya alt bölümlere geçtiğinde araya 1 TAM SATIR (ENTER) BOŞLUK BIRAK ki yazılar iç içe geçmesin.
+                8. (TON VE USUL) Metni tehditkar veya suçlayıcı bir dille DEĞİL, son derece kurumsal, objektif ve profesyonel bir dille yaz.
+                9. (KAPANIŞ) Metnin en sonunu KESİNLİKLE 'Saygılarımızla,' diyerek bitir.
                 
                 İlgili Yönetmelikler ve Kanunlar (Eğer yüklendiyse):
                 {st.session_state.yonetmelik_text if st.session_state.yonetmelik_text else 'Belirtilmedi'}
@@ -696,6 +722,7 @@ with st.expander("⚖️ 3. Savunma İstem Belgesi", expanded=(st.session_state.
                 
                 if st.session_state.get('current_record_id'):
                     hr_db.update_status(st.session_state.current_record_id, "Savunma Bekleniyor")
+                    save_current_state_to_db()
                 
         if st.session_state.savunma_istem_metni:
             st.text_area("Oluşturulan Metin", st.session_state.savunma_istem_metni, height=300)
@@ -727,6 +754,9 @@ with st.expander("🛡️ 4. Çalışan Savunması ve Değerlendirme", expanded=
                     
                     if st.session_state.get('current_record_id'):
                         hr_db.update_status(st.session_state.current_record_id, "Savunma Alındı")
+                        save_current_state_to_db()
+                        
+                    st.success("Savunma metni dosyaya işlendi.")
                 except Exception as e:
                     st.error(f"OCR hatası: {e}")
             
@@ -759,7 +789,7 @@ with st.expander("🧠 5. Nihai Karar Motoru", expanded=(st.session_state.step =
             1.5. (ÇOK ÖNEMLİ) Kararını verirken KESİNLİKLE 'İlgili Yönetmelikler ve Kanunlar' bölümünde sana sağlanan (İş Kanunu, Sözleşme, Yönetmelik vb.) TÜM metinleri detaylıca incele ve cımbızlayarak alıntı yap. Hangi belgenin hangi maddesinin ihlal edildiğini açıkça belirterek dayanak göster.
             2. Görev: Çalışanın savunmasını, tutanak ile kıyaslayarak (varsa çelişkiler) analiz et.
             3. Görev: Savunmadaki gerekçelerin hukuki geçerliliğini değerlendir.
-            4. Görev (DEEP RESEARCH): İlgili konuyu internette güncel Yargıtay İçtihatları ve emsal kararlar ışığında derinlemesine araştır. Hangi disiplin cezasının en uygun olduğuna karar ver. Kararını hukuki bir temele oturt ve araştırdığın güncel örnek Yargıtay içtihadı (Tarih, Esas ve Karar numaralarıyla birlikte) ile destekle. Kesinlikle güncel mevzuat.gov.tr standartlarını referans al ve ezbere hüküm kurma.
+            4. Görev (DEEP RESEARCH): İlgili konuyu internette güncel Yargıtay İçtihatları ve emsal kararlar ışığında derinlemesine araştır. Durumu değerlendirerek yöneticiye hangi idari işlemin / aksiyonun en uygun olacağı yönünde BİR ÖNERİDE BULUN ("Bu duruma göre benim önerim ... aksiyonunu almak yönündedir" şeklinde belirt). Kararını hukuki bir temele oturt ve araştırdığın güncel örnek Yargıtay içtihadı (Tarih, Esas ve Karar numaralarıyla birlikte) ile destekle. Kesinlikle güncel mevzuat.gov.tr standartlarını referans al ve ezbere hüküm kurma.
             5. (ÖNEMLİ) Farklı konulara veya alt bölümlere geçtiğinde araya 1 TAM SATIR (ENTER) BOŞLUK BIRAK ki yazılar iç içe geçmesin.
             """
             
@@ -776,13 +806,19 @@ with st.expander("🧠 5. Nihai Karar Motoru", expanded=(st.session_state.step =
             response = safe_generate(model, prompt, enable_search=True)
             st.session_state.karar_sonucu = response.text
             
-            if st.session_state.get('current_record_id'):
-                hr_db.update_status(st.session_state.current_record_id, "Sonuçlandı")
-            
     if st.session_state.karar_sonucu:
-        st.subheader("Karar ve Gerekçesi")
+        st.subheader("Yapay Zeka Karar Önerisi ve Gerekçesi")
         st.write(st.session_state.karar_sonucu)
-        if st.button("Sonraki Adım: Karar Belgesi Hazırla"):
+        
+        st.markdown("### ✍️ Yönetici Kararı (Sizin Seçiminiz)")
+        secenekler = ["İşlem Yapılmamasına (Savunmanın Kabulüne)", "Sözlü Uyarı", "Yazılı Uyarı", "Kınama", "Ücret Kesintisi", "İş Akdi Feshi (Tazminatlı)", "İş Akdi Feshi (Tazminatsız/Haklı Nedenle)"]
+        secilen_karar = st.selectbox("Lütfen uygulanacak nihai aksiyonu seçin:", secenekler)
+        
+        if st.button("Kararı Onayla ve Belge Aşamasına Geç"):
+            st.session_state.secilen_karar = secilen_karar
+            if st.session_state.get('current_record_id'):
+                hr_db.update_status(st.session_state.current_record_id, f"Sonuçlandı ({secilen_karar})")
+                save_current_state_to_db()
             st.session_state.step = 6
             st.rerun()
 
@@ -793,23 +829,30 @@ with st.expander("📄 6. Resmi Karar Çıktısı", expanded=(st.session_state.s
     if st.session_state.karar_sonucu:
         if st.button("Nihai Belgeyi Oluştur"):
             with st.spinner("🏢 ISS Yapay Zeka resmi karar belgesini üretiyor..."):
-                prompt = f"""Aşağıdaki karar önerisini baz alarak resmi bir "Disiplin Cezası Bildirimi" veya "İş Akdi Fesih Bildirimi" (SADECE GÖVDE METNİ) hazırla. 
+                prompt = f"""Yönetici, çalışan hakkında "{st.session_state.get('secilen_karar', 'Yazılı Uyarı')}" işleminin uygulanmasına karar vermiştir.
+                Aşağıdaki AI analiz raporunu baz alarak, yöneticinin seçtiği bu nihai karara ({st.session_state.get('secilen_karar', 'Yazılı Uyarı')}) uygun, resmi bir "İdari İşlem/Karar Bildirimi" (SADECE GÖVDE METNİ) hazırla. 
                 
                 ÇOK ÖNEMLİ KURALLAR:
                 1. Üreteceğin bu Nihai Bildirim Belgesi doğrudan resmi şablona basılacaktır. Bu yüzden BAŞLIK, LOGO, TARİH, İMZA, ADRES gibi antetli kağıt bilgilerini ASLA yazma. Sadece bildirimin ana metnini yaz.
                 2. Kesinlikle Markdown formatı (**) veya madde işareti (-) KULLANMA. Düz metin paragrafları olarak üret.
-                3. (ÇOK ÖNEMLİ) Karar özetinde geçen TÜM yasa maddelerini, "Şirket Personel Yönetmeliği Madde X", "İş Kanunu Madde Y" ve Yargıtay emsal kararlarını bildirim metninin içerisine KESİNLİKLE yedir. Çalışana, eyleminin tam olarak hangi kurumu kurallarını ve sözleşme maddesini ihlal ettiğini net olarak bildir.
+                3. (ÇOK ÖNEMLİ) Karar özetinde geçen TÜM yasa maddelerini, "Şirket Personel Yönetmeliği Madde X", "İş Kanunu Madde Y" ve Yargıtay emsal kararlarını bildirim metninin içerisine KESİNLİKLE yedir. Çalışana, eyleminin tam olarak hangi kurum kurallarını ve sözleşme maddesini ihlal ettiğini net olarak bildir.
+                4. (TON VE USUL) Metni tehditkar veya suçlayıcı bir dille DEĞİL, son derece kurumsal, objektif ve profesyonel bir dille yaz.
+                5. (KAPANIŞ) Metnin en sonunu KESİNLİKLE 'Saygılarımızla,' diyerek bitir.
+                6. (KELİME KULLANIMI) Metinde KESİNLİKLE 'ceza', 'cezalandırılmıştır', 'ceza verilmiştir' gibi negatif kelimeler KULLANMA. Bunun yerine 'idari işlem uygulanmıştır', 'aksiyon alınmıştır', 'karar verilmiştir' gibi pozitif ve yapıcı kurumsal ifadeler kullan.
                 
-                Karar Özeti: {st.session_state.karar_sonucu}
+                Yapay Zeka Analiz Özeti: {st.session_state.karar_sonucu}
                 """
                 model = genai.GenerativeModel(st.session_state.active_model)
                 response = safe_generate(model, prompt)
                 st.session_state.nihai_belge = response.text
+                save_current_state_to_db()
                 
     if st.session_state.nihai_belge:
         st.text_area("Nihai Belge", st.session_state.nihai_belge, height=300)
-        docx_file = create_docx(st.session_state.nihai_belge, "Nihai Karar Bildirimi")
-        st.download_button("Word Olarak İndir (DOCX)", data=docx_file, file_name="nihai_karar_bildirimi.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        default_baslik = f"{st.session_state.get('secilen_karar', 'Karar')} Bildirimi"
+        belge_basligi = st.text_input("Belge Başlığı (Örn: Yazılı Uyarı, Kınama, Fesih Bildirimi)", value=default_baslik)
+        docx_file = create_docx(st.session_state.nihai_belge, belge_basligi)
+        st.download_button("Word Olarak İndir (DOCX)", data=docx_file, file_name="karar_bildirimi.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 # ----------------- ADIM 7: DOSYA TAKİBİ -----------------
 with st.expander("📂 7. Dosya ve Süreç Takibi (Arşiv)", expanded=(st.session_state.step == 7)):
@@ -829,15 +872,37 @@ with st.expander("📂 7. Dosya ve Süreç Takibi (Arşiv)", expanded=(st.sessio
                 bg = "#EFF6FF"; text_color = "#1D4ED8"; border = "#DBEAFE"; icon = "🛡️"
             else: # Sonuçlandı
                 bg = "#ECFDF5"; text_color = "#065F46"; border = "#D1FAE5"; icon = "🟢"
-                
-            st.markdown(f"""
-            <div style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                <div>
-                    <div style="font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 4px;">{r['employee_name']}</div>
-                    <div style="font-size: 13px; color: #6B7280;">{r['details']} • {r['file_number']}</div>
+            st.markdown("""<div style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px 20px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">""", unsafe_allow_html=True)
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                st.markdown(f"""
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 4px;">{r['employee_name']}</div>
+                        <div style="font-size: 13px; color: #6B7280;">{r['details']} • {r['file_number']}</div>
+                    </div>
+                    <div style="background-color: {bg}; color: {text_color}; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid {border}; display: flex; align-items: center;">
+                        <span style="font-size: 12px; margin-right: 6px;">{icon}</span> {status}
+                    </div>
                 </div>
-                <div style="background-color: {bg}; color: {text_color}; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid {border}; display: flex; align-items: center;">
-                    <span style="font-size: 12px; margin-right: 6px;">{icon}</span> {status}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+            with col2:
+                if "Sonuçlandı" not in status:
+                    has_state = 'state_json' in r.keys() and bool(r['state_json'])
+                    btn_label = "Devam Et ➡️" if has_state else "Eski Kayıt ❌"
+                    
+                    if st.button(btn_label, key=f"devam_{r['id']}", disabled=not has_state, help="Sadece bu özellik eklendikten sonra oluşturulan dosyalar kaldığı yerden devam edebilir."):
+                        import json
+                        try:
+                            saved_state = json.loads(r['state_json'])
+                            st.session_state.current_record_id = r['id']
+                            for k, v in saved_state.items():
+                                st.session_state[k] = v
+                            if status == "Tutanak Tutuldu": st.session_state.step = 3
+                            elif status == "Savunma Bekleniyor": st.session_state.step = 4
+                            elif status == "Savunma Alındı": st.session_state.step = 5
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Kayıt yüklenemedi: {e}")
+                            
+            st.markdown("</div>", unsafe_allow_html=True)

@@ -28,6 +28,15 @@ def init_db():
             created_at TIMESTAMP
         )
     ''')
+    
+    try:
+        c.execute('ALTER TABLE records ADD COLUMN state_json TEXT')
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" not in str(e).lower():
+            print(f"FATAL ERROR ADDING COLUMN: {e}")
+            import streamlit as st
+            st.error(f"Veritabanı Güncelleme Hatası: {e}")
+
     conn.commit()
     conn.close()
     
@@ -60,6 +69,15 @@ def update_status(record_id, status):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('UPDATE records SET status = ? WHERE id = ?', (status, record_id))
+    conn.commit()
+    conn.close()
+
+def update_state(record_id, state_json_str):
+    if not record_id:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('UPDATE records SET state_json = ? WHERE id = ?', (state_json_str, record_id))
     conn.commit()
     conn.close()
 
