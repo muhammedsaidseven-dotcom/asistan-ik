@@ -327,8 +327,14 @@ def set_cell_preserve_style(cell, new_text):
 
 def create_docx(text, title="Belge"):
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    hr_dir = os.path.join(base_dir, "..", "HR")
-    template_files = glob.glob(os.path.join(hr_dir, "*rnek.docx"))
+    
+    # 1. Öncelik: app.py ile aynı klasördeki template.docx
+    template_files = glob.glob(os.path.join(base_dir, "template.docx"))
+    
+    # 2. Öncelik: Eski sistem (HR klasörü altındaki Örnek.docx)
+    if not template_files:
+        hr_dir = os.path.join(base_dir, "..", "HR")
+        template_files = glob.glob(os.path.join(hr_dir, "*rnek.docx"))
     
     doc = None
     if template_files:
@@ -396,6 +402,9 @@ def create_docx(text, title="Belge"):
             return io_stream
             
         except Exception as e:
+            import streamlit as st
+            import traceback
+            st.error(f"Şablon enjeksiyon hatası: {e}\n\n{traceback.format_exc()}")
             print(f"Şablon enjeksiyon hatası: {e}")
             doc = None
             
