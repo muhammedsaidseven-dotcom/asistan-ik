@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import datetime
+import hashlib
 
 DB_PATH = "hr_records.db"
 
@@ -17,8 +18,21 @@ def init_db():
             created_at TIMESTAMP
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password_hash TEXT,
+            role TEXT,
+            status TEXT,
+            created_at TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
+    
+    # Initialize default admin if not exists
+    create_default_admin()
 
 def create_record(employee_name, details, status):
     conn = sqlite3.connect(DB_PATH)
@@ -86,3 +100,73 @@ def get_summary_stats():
         "alindi": alindi,
         "sonuc": sonuc
     }
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def create_default_admin():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('SELECT * FROM users WHERE username = "admin"')
+    if not c.fetchone():
+        now = datetime.datetime.now().isoformat()
+        pwd_hash = hash_password("admin123")
+        c.execute('''
+            INSERT INTO users (username, password_hash, role, status, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', ("admin", pwd_hash, "admin", "approved", now))
+        conn.commit()
+    conn.close()
+
+def create_user(username, password, role="user", status="pending"):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        now = datetime.datetime.now().isoformat()
+        pwd_hash = hash_password(password)
+        c.execute('''
+            INSERT INTO users (username, password_hash, role, status, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (username, pwd_hash, role, status, now))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False # Username already exists
+    finally:
+        conn.close()
+
+def authenticate_user(username, password):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('SELECT password_hash, role, status FROM users WHERE username = ?', (username,))
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        stored_hash, role, status = row
+        if stored_hash == hash_password(password):
+            return {"role": role, "status": status}
+    return None
+
+def get_pending_users():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute('SELECT id, username, created_at FROM users WHERE status = "pending" ORDER BY id DESC')
+    users = c.fetchall()
+    conn.close()
+    return [dict(row) for row in users]
+
+def approve_user(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('UPDATE users SET status = "approved" WHERE id = ?', (user_id,))
+    conn.commit()
+    conn.close()
+
+def reject_user(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('DELETE FROM users WHERE id = ?', (user_id,))
+    conn.commit()
+    conn.close()

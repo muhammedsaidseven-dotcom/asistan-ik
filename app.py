@@ -195,6 +195,12 @@ h1, h2, h3, h4, h5, h6 {{
 
 
 # Session state initialization
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+if "role" not in st.session_state:
+    st.session_state.role = ""
 if "step" not in st.session_state:
     st.session_state.step = 0
 if "tutanak_text" not in st.session_state:
@@ -212,6 +218,61 @@ if "nihai_belge" not in st.session_state:
 if "yonetmelik_text" not in st.session_state:
     st.session_state.yonetmelik_text = ""
 
+
+def login_screen():
+    st.markdown(f"""
+    <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 30px; margin-top: 50px;">
+        <img src="data:image/png;base64,{logo_b64}" style="max-width:250px; mix-blend-mode: darken;">
+    </div>
+    <h2 style='text-align: center; color: #0033A0; margin-bottom: 20px;'>HR Yönetim Asistanı Giriş</h2>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        tab1, tab2 = st.tabs(["🔒 Giriş Yap", "📝 Yetki Talep Et"])
+        
+        with tab1:
+            with st.form("login_form"):
+                username = st.text_input("Kullanıcı Adı")
+                password = st.text_input("Şifre", type="password")
+                submit = st.form_submit_button("Giriş Yap")
+                
+                if submit:
+                    if username and password:
+                        user_data = hr_db.authenticate_user(username, password)
+                        if user_data:
+                            if user_data["status"] == "approved":
+                                st.session_state.logged_in = True
+                                st.session_state.username = username
+                                st.session_state.role = user_data["role"]
+                                st.rerun()
+                            else:
+                                st.warning("Yetki talebiniz henüz onaylanmamış. Lütfen yöneticinin onaylamasını bekleyin.")
+                        else:
+                            st.error("Kullanıcı adı veya şifre hatalı!")
+                    else:
+                        st.warning("Lütfen kullanıcı adı ve şifre girin.")
+
+        with tab2:
+            with st.form("register_form"):
+                st.info("Sisteme erişmek için yetki talep etmelisiniz.")
+                reg_username = st.text_input("Kullanıcı Adı Belirleyin")
+                reg_password = st.text_input("Şifre Belirleyin", type="password")
+                reg_submit = st.form_submit_button("Yetki Talep Et")
+                
+                if reg_submit:
+                    if reg_username and reg_password:
+                        success = hr_db.create_user(reg_username, reg_password)
+                        if success:
+                            st.success("Talebiniz iletildi! Yönetici onayından sonra giriş yapabilirsiniz.")
+                        else:
+                            st.error("Bu kullanıcı adı alınmış. Lütfen başka bir isim seçin.")
+                    else:
+                        st.warning("Lütfen kullanıcı adı ve şifre belirleyin.")
+
+if not st.session_state.logged_in:
+    login_screen()
+    st.stop()
 
 def extract_text_from_pdf(uploaded_file):
     doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
@@ -342,6 +403,39 @@ st.markdown(f"""
     <img src="data:image/png;base64,{logo_b64}" style="max-width:250px; mix-blend-mode: darken;">
 </div>
 """, unsafe_allow_html=True)
+
+# Çıkış Yap Butonu
+col_logout1, col_logout2 = st.columns([8, 1])
+with col_logout2:
+    if st.button("🚪 Çıkış Yap", key="logout_btn"):
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+        st.session_state.role = ""
+        st.rerun()
+
+# --- ADMIN PANEL ---
+if st.session_state.role == "admin":
+    with st.expander("🔒 Yetki Yönetimi (Sadece Admin)", expanded=False):
+        st.write("Sisteme girmek için yetki talep eden kullanıcıları buradan onaylayabilir veya silebilirsiniz.")
+        pending_users = hr_db.get_pending_users()
+        if not pending_users:
+            st.info("Onay bekleyen yeni yetki talebi bulunmuyor.")
+        else:
+            for u in pending_users:
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.write(f"👤 **{u['username']}** (Talep: {u['created_at'][:16]})")
+                with col2:
+                    if st.button("✅ Onayla", key=f"approve_{u['id']}"):
+                        hr_db.approve_user(u['id'])
+                        st.success(f"'{u['username']}' başarıyla onaylandı!")
+                        st.rerun()
+                with col3:
+                    if st.button("❌ Reddet / Sil", key=f"reject_{u['id']}"):
+                        hr_db.reject_user(u['id'])
+                        st.warning(f"'{u['username']}' talebi silindi.")
+                        st.rerun()
+        st.markdown("---")
 
 # --- DASHBOARD SUMMARY ---
 stats = hr_db.get_summary_stats()
