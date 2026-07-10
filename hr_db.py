@@ -28,6 +28,14 @@ def init_db():
             created_at TIMESTAMP
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            action TEXT,
+            created_at TIMESTAMP
+        )
+    ''')
     
     try:
         c.execute('ALTER TABLE records ADD COLUMN state_json TEXT')
@@ -42,6 +50,32 @@ def init_db():
     
     # Initialize default admin if not exists
     create_default_admin()
+
+def log_action(username, action):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    now = datetime.datetime.now().isoformat()
+    c.execute('INSERT INTO logs (username, action, created_at) VALUES (?, ?, ?)', (username, action, now))
+    conn.commit()
+    conn.close()
+
+def get_logs(limit=100):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute('SELECT * FROM logs ORDER BY id DESC LIMIT ?', (limit,))
+    logs = c.fetchall()
+    conn.close()
+    return [dict(row) for row in logs]
+
+def get_approved_users():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute('SELECT id, username, role, created_at FROM users WHERE status = "approved" AND username != "admin" ORDER BY id DESC')
+    users = c.fetchall()
+    conn.close()
+    return [dict(row) for row in users]
 
 def create_record(employee_name, details, status):
     conn = sqlite3.connect(DB_PATH)
@@ -121,6 +155,14 @@ def get_summary_stats():
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
+
+def change_password(username, new_password):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    pwd_hash = hash_password(new_password)
+    c.execute('UPDATE users SET password_hash = ? WHERE username = ?', (pwd_hash, username))
+    conn.commit()
+    conn.close()
 
 def create_default_admin():
     conn = sqlite3.connect(DB_PATH)

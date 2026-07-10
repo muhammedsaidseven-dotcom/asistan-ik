@@ -266,6 +266,7 @@ def login_screen():
                                 st.session_state.logged_in = True
                                 st.session_state.username = username
                                 st.session_state.role = user_data["role"]
+                                hr_db.log_action(username, "Sisteme giriş yaptı.")
                                 st.rerun()
                             else:
                                 st.warning("Yetki talebiniz henüz onaylanmamış. Lütfen yöneticinin onaylamasını bekleyin.")
@@ -421,16 +422,41 @@ def create_docx(text, title="Belge"):
     return io_stream
 
 st.markdown(f"""
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
     <div style="display: flex; align-items: center;">
-        <div style="background-color: #FFFFFF; border: 2px solid #F05A28; border-radius: 14px; width: 54px; height: 54px; display: flex; align-items: center; justify-content: center; margin-right: 18px; font-size: 26px; box-shadow: 0 4px 12px rgba(240, 90, 40, 0.15);">
+        <div style="background-color: #FFFFFF; border: 2px solid #F05A28; border-radius: 10px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; margin-right: 14px; font-size: 20px; box-shadow: 0 4px 12px rgba(240, 90, 40, 0.15);">
             👥
         </div>
-        <h1 class='main-app-title' style='font-size: 38px; font-weight: 800; margin: 0;'>
+        <h1 class='main-app-title' style='font-size: 28px; font-weight: 800; margin: 0;'>
             HR YÖNETİM ASİSTANI
         </h1>
     </div>
-    <img src="data:image/png;base64,{logo_b64}" style="max-width:250px; mix-blend-mode: darken;">
+    <img src="data:image/png;base64,{logo_b64}" style="max-width:180px; mix-blend-mode: darken;">
+</div>
+""", unsafe_allow_html=True)
+
+# --- DASHBOARD SUMMARY (MOVED TO TOP) ---
+stats = hr_db.get_summary_stats()
+devam_eden_total = stats['tutanak'] + stats['bekleyen'] + stats['alindi']
+
+st.markdown(f"""
+<div style="display: flex; gap: 10px; margin-bottom: 15px;">
+    <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); text-align: center;">
+        <div style="color: #6B7280; font-size: 11px; font-weight: 600; text-transform: uppercase;">Toplam Dosya</div>
+        <div style="color: #111827; font-size: 20px; font-weight: 800; margin-top: 2px;">{stats['total']}</div>
+    </div>
+    <div style="flex: 2; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); text-align: center;">
+        <div style="color: #6B7280; font-size: 11px; font-weight: 600; text-transform: uppercase;">Devam Eden Süreçler: <span style="color: #F59E0B; font-size: 14px; font-weight: 800;">{devam_eden_total}</span></div>
+        <div style="color: #6B7280; font-size: 11px; margin-top: 4px; font-weight: 500;">
+            <span style="color: #4B5563;">📝 {stats['tutanak']} Tutanak</span> &nbsp;|&nbsp; 
+            <span style="color: #D97706;">⏳ {stats['bekleyen']} Savunma</span> &nbsp;|&nbsp; 
+            <span style="color: #1D4ED8;">🛡️ {stats['alindi']} Alındı</span>
+        </div>
+    </div>
+    <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); text-align: center;">
+        <div style="color: #6B7280; font-size: 11px; font-weight: 600; text-transform: uppercase;">Sonuçlanan</div>
+        <div style="color: #10B981; font-size: 20px; font-weight: 800; margin-top: 2px;">{stats['sonuc']}</div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -438,114 +464,158 @@ st.markdown(f"""
 col_logout1, col_logout2 = st.columns([8, 1])
 with col_logout2:
     if st.button("🚪 Çıkış Yap", key="logout_btn"):
+        hr_db.log_action(st.session_state.username, "Sistemden çıkış yaptı.")
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
         st.rerun()
 
-# --- ADMIN PANEL ---
-if st.session_state.role == "admin":
-    with st.expander("🔒 Yetki Yönetimi (Sadece Admin)", expanded=False):
-        st.write("Sisteme girmek için yetki talep eden kullanıcıları buradan onaylayabilir veya silebilirsiniz.")
-        pending_users = hr_db.get_pending_users()
-        if not pending_users:
-            st.info("Onay bekleyen yeni yetki talebi bulunmuyor.")
-        else:
-            for u in pending_users:
-                col1, col2, col3 = st.columns([2, 1, 1])
-                with col1:
-                    st.write(f"👤 **{u['username']}** (Talep: {u['created_at'][:16]})")
-                with col2:
-                    if st.button("✅ Onayla", key=f"approve_{u['id']}"):
-                        hr_db.approve_user(u['id'])
-                        st.success(f"'{u['username']}' başarıyla onaylandı!")
-                        st.rerun()
-                with col3:
-                    if st.button("❌ Reddet / Sil", key=f"reject_{u['id']}"):
-                        hr_db.reject_user(u['id'])
-                        st.warning(f"'{u['username']}' talebi silindi.")
-                        st.rerun()
-        st.markdown("---")
+# --- BACKGROUND API CONFIGURATION ---
+import os
+api_key_file = "api_key.txt"
+saved_api_key = ""
+try:
+    if "GEMINI_API_KEY" in st.secrets:
+        saved_api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    pass
+    
+if not saved_api_key and os.path.exists(api_key_file):
+    with open(api_key_file, "r") as f:
+        saved_api_key = f.read().strip()
 
-# --- DASHBOARD SUMMARY ---
-stats = hr_db.get_summary_stats()
-devam_eden_total = stats['tutanak'] + stats['bekleyen'] + stats['alindi']
-
-st.markdown(f"""
-<div style="display: flex; gap: 15px; margin-bottom: 20px;">
-    <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center;">
-        <div style="color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Toplam Dosya</div>
-        <div style="color: #111827; font-size: 28px; font-weight: 800; margin-top: 5px;">{stats['total']}</div>
-    </div>
-    <div style="flex: 1.5; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center;">
-        <div style="color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Devam Eden Süreçler</div>
-        <div style="color: #F59E0B; font-size: 28px; font-weight: 800; margin-top: 5px;">{devam_eden_total}</div>
-        <div style="color: #6B7280; font-size: 12px; margin-top: 8px; font-weight: 500;">
-            <span style="color: #4B5563;">📝 {stats['tutanak']} Tutanak Aşaması</span> &nbsp;|&nbsp; 
-            <span style="color: #D97706;">⏳ {stats['bekleyen']} Savunma Bekliyor</span> &nbsp;|&nbsp; 
-            <span style="color: #1D4ED8;">🛡️ {stats['alindi']} Savunma Alındı</span>
-        </div>
-    </div>
-    <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center;">
-        <div style="color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Sonuçlanan</div>
-        <div style="color: #10B981; font-size: 28px; font-weight: 800; margin-top: 5px;">{stats['sonuc']}</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-with st.expander("⚙️ Gizli Alan: Uygulama ve Sistem Ayarları", expanded=False):
-    import os
-    api_key_file = "api_key.txt"
-    saved_api_key = ""
-    try:
-        if "GEMINI_API_KEY" in st.secrets:
-            saved_api_key = st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        pass
-        
-    if not saved_api_key and os.path.exists(api_key_file):
-        with open(api_key_file, "r") as f:
-            saved_api_key = f.read().strip()
-
-    col_api1, col_api2 = st.columns(2)
-    with col_api1:
-        api_key = st.text_input("🔑 Gemini API Key", type="password", value=saved_api_key, help="İlk girişinizden sonra otomatik kaydedilir.")
-        st.link_button("Kalan Kotamı Göster", "https://aistudio.google.com/app/apikey")
-        
-    if api_key:
-        if api_key != saved_api_key:
-            with open(api_key_file, "w") as f:
-                f.write(api_key)
-                
-        os.environ["GOOGLE_API_KEY"] = api_key
-        genai.configure(api_key=api_key)
-        try:
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            st.success("✅ API Key geçerli.")
-            
-            clean_models = [m.replace('models/', '') for m in available_models]
-            default_idx = 0
-            if 'gemini-1.5-flash' in clean_models:
-                default_idx = clean_models.index('gemini-1.5-flash')
-            elif 'gemini-2.5-flash' in clean_models:
-                default_idx = clean_models.index('gemini-2.5-flash')
-                
-            with col_api2:
-                st.session_state.active_model = st.selectbox(
-                    "🤖 Yapay Zeka Modeli:",
-                    options=clean_models,
-                    index=default_idx
-                )
-                
-        except Exception as e:
-            st.error(f"API Key geçersiz: {e}")
-            st.stop()
-    else:
-        st.warning("Lütfen işlem yapmadan önce API anahtarınızı girin.")
+if saved_api_key:
+    os.environ["GOOGLE_API_KEY"] = saved_api_key
+    genai.configure(api_key=saved_api_key)
+    if "active_model" not in st.session_state:
+        st.session_state.active_model = "gemini-1.5-flash"
+else:
+    if st.session_state.role != "admin":
+        st.error("Sistem yöneticisi henüz API anahtarı yapılandırmamış. Lütfen yöneticiye başvurun.")
         st.stop()
 
+# --- ADMIN PANEL ---
+if st.session_state.role == "admin":
+    with st.sidebar:
+        st.markdown("<h3 style='text-align: center; color: #0033A0; margin-bottom: 20px;'>🛠️ Yönetici Menüsü</h3>", unsafe_allow_html=True)
+        with st.expander("🔒 Yetki Yönetimi", expanded=False):
+            st.write("Sisteme girmek için yetki talep eden kullanıcıları buradan onaylayabilir veya silebilirsiniz.")
+            pending_users = hr_db.get_pending_users()
+            if not pending_users:
+                st.info("Onay bekleyen yeni yetki talebi bulunmuyor.")
+            else:
+                for u in pending_users:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"👤 **{u['username']}**")
+                        st.write(f"({u['created_at'][:16]})")
+                    with col2:
+                        if st.button("✅ Onay", key=f"approve_{u['id']}"):
+                            hr_db.approve_user(u['id'])
+                            hr_db.log_action(st.session_state.username, f"Kullanıcı yetkisini onayladı: {u['username']}")
+                            st.success(f"'{u['username']}' başarıyla onaylandı!")
+                            st.rerun()
+                        if st.button("❌ Red", key=f"reject_{u['id']}"):
+                            hr_db.reject_user(u['id'])
+                            hr_db.log_action(st.session_state.username, f"Kullanıcı talebini reddetti: {u['username']}")
+                            st.warning(f"'{u['username']}' talebi silindi.")
+                            st.rerun()
+            
+            st.markdown("---")
+            st.subheader("Mevcut Kullanıcılar")
+            approved_users = hr_db.get_approved_users()
+            if not approved_users:
+                st.info("Sistemde admin dışında aktif kullanıcı yok.")
+            else:
+                for u in approved_users:
+                    st.write(f"👤 **{u['username']}** (Kayıt: {u['created_at'][:10]})")
+                    if st.button("⛔ Yetkiyi Kaldır", key=f"revoke_{u['id']}", use_container_width=True):
+                        hr_db.reject_user(u['id'])
+                        hr_db.log_action(st.session_state.username, f"Kullanıcı yetkisini kaldırdı: {u['username']}")
+                        st.error(f"'{u['username']}' yetkisi kaldırıldı!")
+                        st.rerun()
+                        
+        with st.expander("📜 Sistem Log Kayıtları", expanded=False):
+            st.write("Son 100 işlem kaydı.")
+            if st.button("Yenile", use_container_width=True):
+                st.rerun()
+            logs = hr_db.get_logs()
+            if logs:
+                import pandas as pd
+                df = pd.DataFrame(logs)
+                df['created_at'] = pd.to_datetime(df['created_at']).dt.strftime("%m-%d %H:%M")
+                df = df[['created_at', 'username', 'action']]
+                df.columns = ["Tarih", "Kullanıcı", "İşlem"]
+                st.dataframe(df, use_container_width=True, hide_index=True)
+            else:
+                st.info("Henüz log yok.")
+                
+        with st.expander("🔑 Şifre Değiştir", expanded=False):
+            with st.form("pwd_form"):
+                new_pwd = st.text_input("Yeni Şifre", type="password")
+                new_pwd2 = st.text_input("Yeni Şifre (Tekrar)", type="password")
+                if st.form_submit_button("Güncelle", use_container_width=True):
+                    if new_pwd and new_pwd == new_pwd2:
+                        hr_db.change_password(st.session_state.username, new_pwd)
+                        hr_db.log_action(st.session_state.username, "Kendi şifresini değiştirdi.")
+                        st.success("Şifreniz güncellendi! Lütfen giriş yapın.")
+                        st.session_state.logged_in = False
+                        st.rerun()
+                    elif new_pwd != new_pwd2:
+                        st.error("Şifreler eşleşmiyor!")
+                    else:
+                        st.error("Şifre boş olamaz!")
+                        
+        with st.expander("⚙️ Sistem Ayarları (API)", expanded=False):
+            api_key = st.text_input("🔑 Gemini API Key", type="password", value=saved_api_key)
+            st.link_button("Kotamı Göster", "https://aistudio.google.com/app/apikey", use_container_width=True)
+            
+            if api_key:
+                if api_key != saved_api_key:
+                    with open(api_key_file, "w") as f:
+                        f.write(api_key)
+                    os.environ["GOOGLE_API_KEY"] = api_key
+                    genai.configure(api_key=api_key)
+                    
+                try:
+                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    st.success("✅ API Geçerli.")
+                    clean_models = [m.replace('models/', '') for m in available_models]
+                    default_idx = 0
+                    if 'gemini-1.5-flash' in clean_models:
+                        default_idx = clean_models.index('gemini-1.5-flash')
+                    elif 'gemini-2.5-flash' in clean_models:
+                        default_idx = clean_models.index('gemini-2.5-flash')
+                        
+                    st.session_state.active_model = st.selectbox(
+                        "Yapay Zeka Modeli:",
+                        options=clean_models,
+                        index=default_idx
+                    )
+                except Exception as e:
+                    st.error(f"Geçersiz API: {e}")
+                    st.stop()
+            else:
+                st.warning("API anahtarını girin.")
+                st.stop()
+
+
+
+
+# Menüleri Toplu Aç/Kapat Butonları
+col_exp1, col_exp2 = st.columns(2)
+with col_exp1:
+    if st.button("🔽 Tüm Adımları Aç", use_container_width=True):
+        st.session_state.expand_all = True
+        st.rerun()
+with col_exp2:
+    if st.button("▶️ Tüm Adımları Kapat", use_container_width=True):
+        st.session_state.expand_all = False
+        st.session_state.step = 0
+        st.rerun()
+
 # ----------------- ADIM 1: YÖNETMELİK -----------------
-with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", expanded=(st.session_state.step == 1)):
+with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 1)):
     
     kb_dir = os.path.join(os.path.dirname(__file__), "knowledge_base")
     os.makedirs(kb_dir, exist_ok=True)
@@ -605,6 +675,7 @@ with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", ex
                         save_path = os.path.join(kb_dir, f"{y_file.name}.txt")
                         with open(save_path, "w", encoding="utf-8") as f:
                             f.write(text)
+            hr_db.log_action(st.session_state.username, f"{len(yonetmelik_files)} adet kalıcı mevzuat/kural dosyası ekledi.")
             st.success(f"{len(yonetmelik_files)} belge KALICI olarak kaydedildi!")
             st.rerun()
 
@@ -639,7 +710,7 @@ with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", ex
         st.rerun()
 
 # ----------------- ADIM 2: TUTANAK YÜKLEME -----------------
-with st.expander("📝 2. Tutanak Yükleme ve Analizi", expanded=(st.session_state.step == 2)):
+with st.expander("📝 2. Tutanak Yükleme ve Analizi", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 2)):
     st.write("Lütfen olaya ilişkin tutanağı PDF veya Word formatında yükleyin.")
     tutanak_file = st.file_uploader("Tutanak Seç", type=["pdf", "docx"])
     
@@ -685,6 +756,7 @@ with st.expander("📝 2. Tutanak Yükleme ve Analizi", expanded=(st.session_sta
                         st.session_state.current_record_id = rec_id
                     save_current_state_to_db()
                         
+                    hr_db.log_action(st.session_state.username, f"Yeni tutanak analiz etti ve dosya açtı: {emp_name}")
                     st.success("Tutanak analiz edildi ve sistem kaydı otomatik oluşturuldu!")
                     
                 except Exception as e:
@@ -698,7 +770,7 @@ with st.expander("📝 2. Tutanak Yükleme ve Analizi", expanded=(st.session_sta
             st.rerun()
 
 # ----------------- ADIM 3: SAVUNMA İSTEMİ -----------------
-with st.expander("⚖️ 3. Savunma İstem Belgesi", expanded=(st.session_state.step == 3)):
+with st.expander("⚖️ 3. Savunma İstem Belgesi", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 3)):
     st.write("Tutanak özetine dayanarak çalışana verilecek resmi savunma istem metni oluşturuluyor.")
     
     if not st.session_state.tutanak_summary:
@@ -732,6 +804,7 @@ with st.expander("⚖️ 3. Savunma İstem Belgesi", expanded=(st.session_state.
                 if st.session_state.get('current_record_id'):
                     hr_db.update_status(st.session_state.current_record_id, "Savunma Bekleniyor")
                     save_current_state_to_db()
+                    hr_db.log_action(st.session_state.username, f"Savunma istem belgesi üretti.")
                 
         if st.session_state.savunma_istem_metni:
             st.text_area("Oluşturulan Metin", st.session_state.savunma_istem_metni, height=300)
@@ -744,7 +817,7 @@ with st.expander("⚖️ 3. Savunma İstem Belgesi", expanded=(st.session_state.
                 st.rerun()
 
 # ----------------- ADIM 4: SAVUNMA YÜKLEME -----------------
-with st.expander("🛡️ 4. Çalışan Savunması ve Değerlendirme", expanded=(st.session_state.step == 4)):
+with st.expander("🛡️ 4. Çalışan Savunması ve Değerlendirme", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 4)):
     st.write("Çalışanın el yazısı ile teslim ettiği PDF formatındaki savunmayı yükleyin.")
     savunma_file = st.file_uploader("Savunma Seç", type=["pdf"])
     
@@ -765,6 +838,7 @@ with st.expander("🛡️ 4. Çalışan Savunması ve Değerlendirme", expanded=
                         hr_db.update_status(st.session_state.current_record_id, "Savunma Alındı")
                         save_current_state_to_db()
                         
+                    hr_db.log_action(st.session_state.username, "Personele ait PDF savunmayı yükledi ve okuttu.")
                     st.success("Savunma metni dosyaya işlendi.")
                 except Exception as e:
                     st.error(f"OCR hatası: {e}")
@@ -779,7 +853,7 @@ with st.expander("🛡️ 4. Çalışan Savunması ve Değerlendirme", expanded=
             st.rerun()
 
 # ----------------- ADIM 5: KARAR MOTORU -----------------
-with st.expander("🧠 5. Nihai Karar Motoru", expanded=(st.session_state.step == 5)):
+with st.expander("🧠 5. Nihai Karar Motoru", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 5)):
     st.write("Şirket yönetmeliği, tutanak, savunma, İş Kanunu ve Yargıtay İçtihatları çerçevesinde değerlendirme yapılır.")
     
     if st.button("Karar Önerisi Al"):
@@ -828,11 +902,12 @@ with st.expander("🧠 5. Nihai Karar Motoru", expanded=(st.session_state.step =
             if st.session_state.get('current_record_id'):
                 hr_db.update_status(st.session_state.current_record_id, f"Sonuçlandı ({secilen_karar})")
                 save_current_state_to_db()
+            hr_db.log_action(st.session_state.username, f"Dosyayı karara bağladı: {secilen_karar}")
             st.session_state.step = 6
             st.rerun()
 
 # ----------------- ADIM 6: KARAR ÇIKTISI -----------------
-with st.expander("📄 6. Resmi Karar Çıktısı", expanded=(st.session_state.step == 6)):
+with st.expander("📄 6. Resmi Karar Çıktısı", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 6)):
     st.write("Verilen karara uygun nihai bildirim metni.")
     
     if st.session_state.karar_sonucu:
@@ -864,7 +939,7 @@ with st.expander("📄 6. Resmi Karar Çıktısı", expanded=(st.session_state.s
         st.download_button("Word Olarak İndir (DOCX)", data=docx_file, file_name="karar_bildirimi.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 # ----------------- ADIM 7: DOSYA TAKİBİ -----------------
-with st.expander("📂 7. Dosya ve Süreç Takibi (Arşiv)", expanded=(st.session_state.step == 7)):
+with st.expander("📂 7. Dosya ve Süreç Takibi (Arşiv)", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 7)):
     st.write("Sistemdeki tüm disiplin dosyalarının güncel durumları.")
     
     records = hr_db.get_all_records()
