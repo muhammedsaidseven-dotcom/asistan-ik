@@ -1,19 +1,8 @@
-import sys
-import subprocess
-
-try:
-    import google.generativeai as genai
-    import fitz  # PyMuPDF
-    from docx import Document
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "google-generativeai", "PyMuPDF", "python-docx"])
-    import google.generativeai as genai
-    import fitz
-    from docx import Document
-
 import streamlit as st
 import os
 from io import BytesIO
+import fitz  # PyMuPDF
+from docx import Document
 import hr_db
 import importlib
 importlib.reload(hr_db)
@@ -22,50 +11,17 @@ import streamlit as st
 
 # Initialize database
 hr_db.init_db()
-from google.api_core.exceptions import ResourceExhausted
-
-def safe_generate(model, prompt_or_parts, enable_search=False):
-    import google.generativeai as genai
-    import streamlit as st
-    
-    try:
-        # Gerçekten erişilebilir olan modelleri dinamik olarak çek
-        available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        fallback_models = [m.replace('models/', '') for m in available if 'gemini' in m.lower()]
-    except Exception:
-        fallback_models = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro']
-        
-    current_model = model
-    
-    for attempt in range(len(fallback_models) + 1):
-        try:
-            if enable_search:
-                try:
-                    return current_model.generate_content(prompt_or_parts, tools='google_search_retrieval')
-                except Exception as e:
-                    return current_model.generate_content(prompt_or_parts)
-            else:
-                return current_model.generate_content(prompt_or_parts)
-                
-        except Exception as e:
-            err_msg = str(e).lower()
-            # 404 (bulunamadı) veya 429 (kota doldu) veya 400 (desteklenmeyen özellik) hatalarında otomatik diğer modele geç
-            if "429" in err_msg or "resourceexhausted" in err_msg or "404" in err_msg or "not found" in err_msg or "not supported" in err_msg or "image input" in err_msg or "400" in err_msg:
-                if attempt < len(fallback_models):
-                    next_model_name = fallback_models[attempt]
-                    st.toast(f"Mevcut modelde kısıtlama yaşandı. '{next_model_name}' modeline geçiliyor...", icon="🔄")
-                    current_model = genai.GenerativeModel(next_model_name)
-                else:
-                    st.error("Hesabınızdaki tüm yapay zeka modelleri denendi ancak işlem gerçekleştirilemedi. Lütfen farklı bir dosya veya veri ile deneyin.")
-                    st.stop()
-            else:
-                st.error("Yapay zeka analiz aşamasında geçici bir sorun yaşadı. Lütfen tekrar deneyin.")
-                st.stop()
-st.set_page_config(page_title="AY Çağrı Merkezi - İK Disiplin", layout="wide", page_icon="🏢")
+st.set_page_config(
+    page_title="HR Yönetim Asistanı",
+    layout="wide",
+    page_icon="🏢",
+    initial_sidebar_state="collapsed",
+)
 
 import base64
 import io
 import json
+import html
 
 def save_current_state_to_db():
     if st.session_state.get('current_record_id'):
@@ -92,8 +48,10 @@ def get_base64_of_bin_file(bin_file):
     except Exception:
         return ""
 
-logo_path = "logo.png"
+logo_path = "logo-display-transparent.png"
 logo_b64 = get_base64_of_bin_file(logo_path)
+logo_mark_path = "logo-mark-transparent.png"
+logo_mark_b64 = get_base64_of_bin_file(logo_mark_path)
 
 # --- GLOBAL BILGI CSS INJECTION ---
 st.markdown(f"""
@@ -210,6 +168,240 @@ h1, h2, h3, h4, h5, h6 {{
     box-shadow: 0 0 0 3px rgba(240, 90, 40, 0.15) !important;
     background: #FFFFFF !important;
 }}
+
+/* Mobil bankacılık esintili, özgün uygulama katmanı */
+:root {{
+    --brand-navy: #0033A0;
+    --brand-blue: #0B5FFF;
+    --brand-orange: #F05A28;
+    --ink: #10213E;
+    --muted: #64748B;
+    --line: #E3EAF5;
+}}
+
+.stApp {{
+    background: linear-gradient(180deg, #EEF4FF 0, #F7F9FD 330px, #F4F7FC 100%) !important;
+    color: var(--ink) !important;
+}}
+
+.block-container {{
+    max-width: 1220px !important;
+    padding-top: 1.5rem !important;
+    padding-bottom: 3rem !important;
+}}
+
+label, [data-testid="stWidgetLabel"] p {{
+    color: var(--ink) !important;
+    font-weight: 650 !important;
+}}
+
+[data-testid="stExpander"] {{
+    background: #FFFFFF !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 18px !important;
+    box-shadow: 0 8px 24px rgba(15, 45, 102, 0.05) !important;
+    margin-bottom: 12px !important;
+    overflow: hidden !important;
+}}
+
+[data-testid="stExpander"] summary p {{
+    color: var(--ink) !important;
+    font-weight: 750 !important;
+    font-size: 0.96rem !important;
+}}
+
+[data-testid="stExpander"]:hover {{
+    border-color: #AFC5F1 !important;
+    box-shadow: 0 12px 28px rgba(15, 45, 102, 0.09) !important;
+}}
+
+[data-testid="stExpanderDetails"] {{
+    background: linear-gradient(180deg, #F8FBFF 0%, #FFFFFF 140px) !important;
+    border-top: 1px solid var(--line) !important;
+    padding-top: 18px !important;
+}}
+
+.stFileUploader {{
+    background: #F8FAFE !important;
+    border: 1px dashed #B6C8E8 !important;
+    border-radius: 14px !important;
+    padding: 16px !important;
+}}
+
+.stTextArea textarea, .stTextInput input, .stSelectbox > div > div {{
+    background: #FFFFFF !important;
+    border: 1px solid #D5E0F0 !important;
+    color: var(--ink) !important;
+    border-radius: 12px !important;
+    min-height: 46px !important;
+}}
+
+.stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox > div > div:focus-within {{
+    border-color: var(--brand-blue) !important;
+    box-shadow: 0 0 0 3px rgba(11, 95, 255, 0.12) !important;
+}}
+
+.stButton > button {{
+    background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%) !important;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    min-height: 44px !important;
+    padding: 0.62rem 1rem !important;
+    box-shadow: 0 6px 14px rgba(0, 51, 160, 0.18) !important;
+}}
+
+.stButton > button:hover {{
+    background: linear-gradient(135deg, #0A2A78 0%, #0348C9 100%) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 9px 18px rgba(0, 51, 160, 0.24) !important;
+}}
+
+h1, h2, h3, h4, h5, h6 {{ color: var(--ink) !important; }}
+
+.app-shell {{
+    background: linear-gradient(135deg, #002A83 0%, #084ED6 100%);
+    border-radius: 22px;
+    padding: 22px 26px;
+    color: #FFFFFF;
+    box-shadow: 0 14px 32px rgba(0, 51, 160, 0.2);
+    margin-bottom: 18px;
+}}
+
+.app-logo-card {{
+    background: #FFFFFF;
+    border: 1px solid rgba(255,255,255,0.55);
+    border-radius: 16px;
+    min-width: 148px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 18px rgba(0, 28, 91, 0.2);
+}}
+
+.app-logo-card img {{
+    display: block;
+    width: 124px;
+    max-height: 48px;
+    object-fit: contain;
+}}
+
+.app-eyebrow {{ font-size: 0.72rem; font-weight: 750; letter-spacing: 0.12em; opacity: 0.78; text-transform: uppercase; }}
+.app-welcome {{ font-size: 1.55rem; font-weight: 800; margin: 4px 0; letter-spacing: -0.6px; }}
+.app-subtitle {{ font-size: 0.88rem; opacity: 0.82; margin: 0; }}
+
+.summary-card {{
+    background: #FFFFFF;
+    border: 1px solid #E2EAF6;
+    border-radius: 18px;
+    padding: 18px;
+    min-height: 114px;
+    box-shadow: 0 8px 22px rgba(15, 45, 102, 0.05);
+}}
+.summary-label {{ color: #64748B; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; }}
+.summary-value {{ color: #10213E; font-size: 1.8rem; font-weight: 800; line-height: 1.2; margin-top: 8px; }}
+.summary-detail {{ color: #64748B; font-size: 0.78rem; margin-top: 7px; }}
+.section-intro {{ display: flex; align-items: center; justify-content: space-between; margin: 24px 2px 12px; }}
+.section-intro h3 {{ margin: 0; font-size: 1.08rem; }}
+.section-intro span {{ color: #64748B; font-size: 0.82rem; }}
+.logo-caption {{ color: #0033A0; font-size: 0.64rem; font-weight: 750; letter-spacing: 0.06em; margin-top: 4px; text-align: center; text-transform: uppercase; }}
+
+[data-testid="stSidebar"] {{ background: #F7F9FD !important; border-right: 1px solid var(--line); }}
+[data-testid="stSidebar"] [data-testid="stExpander"] {{ border-radius: 14px !important; box-shadow: none !important; }}
+
+.login-hero {{ margin: 3rem auto 1.25rem; max-width: 560px; text-align: center; }}
+.login-brand {{ background: #FFFFFF; border: 1px solid #E2EAF6; border-radius: 24px; box-shadow: 0 16px 38px rgba(15, 45, 102, 0.08); padding: 26px 24px 10px; }}
+
+@media (max-width: 700px) {{
+    .block-container {{ padding: 0.9rem 0.9rem 2rem !important; }}
+    .app-shell {{ border-radius: 18px; padding: 18px; }}
+    .app-logo-card {{ min-width: 105px; padding: 8px 10px; border-radius: 13px; }}
+    .app-logo-card img {{ width: 92px; max-height: 38px; }}
+    .logo-caption {{ font-size: 0.55rem; }}
+    .app-welcome {{ font-size: 1.25rem; }}
+    .summary-card {{ min-height: 96px; padding: 14px; border-radius: 15px; }}
+    .summary-value {{ font-size: 1.45rem; }}
+    [data-testid="stExpander"] {{ border-radius: 15px !important; }}
+    .login-hero {{ margin-top: 1.3rem; }}
+}}
+
+/* Sade görünüm: içerik ve mevcut süreç akışı ön planda */
+.stApp {{ background: #F7F8FA !important; color: #1F2937 !important; }}
+.block-container {{ max-width: 1120px !important; padding-top: 0.5rem !important; padding-bottom: 2.5rem !important; }}
+html, body, .stApp {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; }}
+.stMarkdown p {{ color: #334155 !important; font-weight: 400 !important; }}
+label, [data-testid="stWidgetLabel"] p {{ color: #334155 !important; font-weight: 600 !important; }}
+h1, h2, h3, h4, h5, h6 {{ color: #0033A0 !important; letter-spacing: normal !important; }}
+
+.app-shell {{
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 18px 20px;
+    color: #1F2937;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    margin-bottom: 16px;
+}}
+.app-eyebrow {{ color: #64748B; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; opacity: 1; text-transform: uppercase; }}
+.app-welcome {{ color: #0033A0; font-size: 1.35rem; font-weight: 750; margin: 4px 0; letter-spacing: normal; }}
+.app-shell .app-subtitle {{ color: #64748B !important; font-size: 0.86rem; opacity: 1; margin: 0; }}
+.app-logo-card {{ background: transparent !important; border: none !important; border-radius: 0 !important; min-width: 0; padding: 0 !important; box-shadow: none !important; }}
+.app-logo-card img {{ width: 112px; max-height: 44px; }}
+.logo-caption {{ color: #64748B; font-size: 0.58rem; font-weight: 600; letter-spacing: 0.02em; margin-top: 3px; }}
+
+.summary-card {{ background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 14px; min-height: 98px; box-shadow: none; }}
+.summary-label {{ color: #64748B; font-size: 0.7rem; font-weight: 700; letter-spacing: normal; text-transform: uppercase; }}
+.summary-value {{ color: #1F2937; font-size: 1.55rem; font-weight: 750; line-height: 1.2; margin-top: 6px; }}
+.summary-detail {{ color: #64748B; font-size: 0.74rem; margin-top: 5px; }}
+.section-intro {{ margin: 20px 2px 10px; }}
+.section-intro h3 {{ color: #0033A0 !important; font-size: 1rem; }}
+
+[data-testid="stExpander"] {{ background: #FFFFFF !important; border: 1px solid #E5E7EB !important; border-radius: 12px !important; box-shadow: none !important; margin-bottom: 8px !important; }}
+[data-testid="stExpander"] summary p {{ color: #0033A0 !important; font-size: 0.94rem !important; font-weight: 650 !important; }}
+[data-testid="stExpander"]:hover {{ border-color: #B8C7E3 !important; box-shadow: none !important; }}
+[data-testid="stExpanderDetails"] {{ background: #FFFFFF !important; border-top: 1px solid #E5E7EB !important; padding-top: 16px !important; }}
+
+.stButton > button {{ background: #0033A0 !important; border: 1px solid #0033A0 !important; border-radius: 8px !important; box-shadow: none !important; font-weight: 650 !important; min-height: 42px !important; padding: 0.55rem 1rem !important; transform: none !important; }}
+.stButton > button:hover {{ background: #002878 !important; border-color: #002878 !important; box-shadow: none !important; transform: none !important; }}
+.stTextArea textarea, .stTextInput input, .stSelectbox > div > div {{ background: #FFFFFF !important; border: 1px solid #D1D5DB !important; border-radius: 8px !important; min-height: 42px !important; }}
+.stTextArea textarea:focus, .stTextInput input:focus, .stSelectbox > div > div:focus-within {{ border-color: #0033A0 !important; box-shadow: 0 0 0 2px rgba(0, 51, 160, 0.12) !important; }}
+.stFileUploader {{ background: #FFFFFF !important; border: 1px dashed #CBD5E1 !important; border-radius: 10px !important; padding: 12px !important; }}
+
+@media (max-width: 700px) {{
+    .block-container {{ padding: 0.35rem 0.75rem 2rem !important; }}
+    .app-shell {{ border-radius: 10px; padding: 14px; }}
+    .app-logo-card {{ min-width: 0; padding: 0 !important; }}
+    .app-logo-card img {{ width: 82px; max-height: 34px; }}
+    .app-welcome {{ font-size: 1.15rem; }}
+    .summary-card {{ min-height: 88px; padding: 12px; border-radius: 10px; }}
+    .summary-value {{ font-size: 1.3rem; }}
+}}
+
+/* Giriş ekranı: üst alana yakın, sade ve logo odaklı */
+.login-hero {{ margin: 0 auto 0.6rem; max-width: 620px; padding-top: 64px; }}
+.login-brand {{ background: transparent !important; border: none !important; border-radius: 0 !important; padding: 0 24px 4px; box-shadow: none !important; }}
+.login-brand {{ overflow: visible !important; }}
+.login-brand img {{ display: block; width: 270px !important; max-width: 100% !important; height: auto !important; object-fit: contain !important; margin: 0 auto 2px !important; }}
+.login-brand h2 {{ color: #0033A0 !important; font-family: Arial, Helvetica, sans-serif !important; font-size: 1.36rem !important; font-weight: 800 !important; letter-spacing: -0.03em !important; line-height: 1.05 !important; margin: 0 !important; }}
+.login-brand p {{ color: #64748B !important; margin: 0 0 5px !important; }}
+.login-title-accent {{ color: #F05A28 !important; }}
+.login-hero {{ position: relative; }}
+.login-watermark {{
+    position: relative;
+    width: min(25vw, 180px);
+    margin: 10px auto 0;
+    opacity: 0.10;
+    pointer-events: none;
+}}
+.login-watermark img {{ display: block; width: 100%; height: auto; object-fit: contain; }}
+.login-brand {{ background: transparent !important; }}
+@media (max-width: 700px) {{
+    .login-hero {{ margin-top: 0; padding-top: 44px; }}
+    .login-brand {{ padding: 6px 14px 5px; }}
+    .login-brand img {{ width: 250px !important; }}
+    .login-watermark {{ width: 155px; margin-top: 8px; }}
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -242,13 +434,18 @@ if "yonetmelik_text" not in st.session_state:
 
 def login_screen():
     st.markdown(f"""
-    <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 30px; margin-top: 50px;">
-        <img src="data:image/png;base64,{logo_b64}" style="max-width:250px; mix-blend-mode: darken;">
+    <div class="login-hero">
+      <div class="login-brand">
+        <img src="data:image/png;base64,{logo_b64}" alt="ay.cx logosu">
+        <h2 style="text-align:center; color:#10213E;"><span class="login-title-accent">HR</span> Yönetim Asistanı</h2>
+        <div class="login-watermark" aria-hidden="true">
+          <img src="data:image/png;base64,{logo_mark_b64}" alt="">
+        </div>
+      </div>
     </div>
-    <h2 style='text-align: center; color: #0033A0; margin-bottom: 20px;'>HR Yönetim Asistanı Giriş</h2>
     """, unsafe_allow_html=True)
     
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1.35, 1])
     with col2:
         tab1, tab2 = st.tabs(["🔒 Giriş Yap", "📝 Yetki Talep Et"])
         
@@ -277,7 +474,7 @@ def login_screen():
 
         with tab2:
             with st.form("register_form"):
-                st.info("Sisteme erişmek için yetki talep etmelisiniz.")
+                st.info("Sisteme erişmek için yetki talebinizi oluşturun.")
                 reg_username = st.text_input("Kullanıcı Adı Belirleyin")
                 reg_password = st.text_input("Şifre Belirleyin", type="password")
                 reg_submit = st.form_submit_button("Yetki Talep Et")
@@ -421,17 +618,20 @@ def create_docx(text, title="Belge"):
     io_stream.seek(0)
     return io_stream
 
+display_username = html.escape(st.session_state.username)
 st.markdown(f"""
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-    <div style="display: flex; align-items: center;">
-        <div style="background-color: #FFFFFF; border: 2px solid #F05A28; border-radius: 10px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; margin-right: 14px; font-size: 20px; box-shadow: 0 4px 12px rgba(240, 90, 40, 0.15);">
-            👥
+<div class="app-shell">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:18px;">
+        <div>
+            <div class="app-eyebrow">HR Yönetim Asistanı</div>
+            <div class="app-welcome">Merhaba, {display_username}</div>
+            <p class="app-subtitle">Disiplin süreçlerinize buradan güvenle devam edin.</p>
         </div>
-        <h1 class='main-app-title' style='font-size: 28px; font-weight: 800; margin: 0;'>
-            HR YÖNETİM ASİSTANI
-        </h1>
+        <div class="app-logo-card">
+            <img src="data:image/png;base64,{logo_b64}" alt="ay.cx logosu">
+            <div class="logo-caption">İK çalışma alanı</div>
+        </div>
     </div>
-    <img src="data:image/png;base64,{logo_b64}" style="max-width:180px; mix-blend-mode: darken;">
 </div>
 """, unsafe_allow_html=True)
 
@@ -439,60 +639,41 @@ st.markdown(f"""
 stats = hr_db.get_summary_stats()
 devam_eden_total = stats['tutanak'] + stats['bekleyen'] + stats['alindi']
 
-st.markdown(f"""
-<div style="display: flex; gap: 10px; margin-bottom: 15px;">
-    <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); text-align: center;">
-        <div style="color: #6B7280; font-size: 11px; font-weight: 600; text-transform: uppercase;">Toplam Dosya</div>
-        <div style="color: #111827; font-size: 20px; font-weight: 800; margin-top: 2px;">{stats['total']}</div>
+summary_col1, summary_col2, summary_col3 = st.columns([1, 1.45, 1])
+with summary_col1:
+    st.markdown(f"""
+    <div class="summary-card">
+        <div class="summary-label">Toplam Dosya</div>
+        <div class="summary-value">{stats['total']}</div>
+        <div class="summary-detail">Sistemdeki tüm kayıtlar</div>
     </div>
-    <div style="flex: 2; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); text-align: center;">
-        <div style="color: #6B7280; font-size: 11px; font-weight: 600; text-transform: uppercase;">Devam Eden Süreçler: <span style="color: #F59E0B; font-size: 14px; font-weight: 800;">{devam_eden_total}</span></div>
-        <div style="color: #6B7280; font-size: 11px; margin-top: 4px; font-weight: 500;">
-            <span style="color: #4B5563;">📝 {stats['tutanak']} Tutanak</span> &nbsp;|&nbsp; 
-            <span style="color: #D97706;">⏳ {stats['bekleyen']} Savunma</span> &nbsp;|&nbsp; 
-            <span style="color: #1D4ED8;">🛡️ {stats['alindi']} Alındı</span>
-        </div>
+    """, unsafe_allow_html=True)
+with summary_col2:
+    st.markdown(f"""
+    <div class="summary-card">
+        <div class="summary-label">Devam Eden Süreçler</div>
+        <div class="summary-value" style="color:#D97706;">{devam_eden_total}</div>
+        <div class="summary-detail">📝 {stats['tutanak']} tutanak &nbsp;•&nbsp; ⏳ {stats['bekleyen']} bekleyen &nbsp;•&nbsp; 🛡️ {stats['alindi']} alınan</div>
     </div>
-    <div style="flex: 1; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); text-align: center;">
-        <div style="color: #6B7280; font-size: 11px; font-weight: 600; text-transform: uppercase;">Sonuçlanan</div>
-        <div style="color: #10B981; font-size: 20px; font-weight: 800; margin-top: 2px;">{stats['sonuc']}</div>
+    """, unsafe_allow_html=True)
+with summary_col3:
+    st.markdown(f"""
+    <div class="summary-card">
+        <div class="summary-label">Sonuçlanan</div>
+        <div class="summary-value" style="color:#047857;">{stats['sonuc']}</div>
+        <div class="summary-detail">Kararı tamamlanan dosyalar</div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # Çıkış Yap Butonu
-col_logout1, col_logout2 = st.columns([8, 1])
+col_logout1, col_logout2 = st.columns([6, 1])
 with col_logout2:
-    if st.button("🚪 Çıkış Yap", key="logout_btn"):
+    if st.button("Oturumu Kapat", key="logout_btn", use_container_width=True):
         hr_db.log_action(st.session_state.username, "Sistemden çıkış yaptı.")
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
         st.rerun()
-
-# --- BACKGROUND API CONFIGURATION ---
-import os
-api_key_file = "api_key.txt"
-saved_api_key = ""
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        saved_api_key = st.secrets["GEMINI_API_KEY"]
-except Exception:
-    pass
-    
-if not saved_api_key and os.path.exists(api_key_file):
-    with open(api_key_file, "r") as f:
-        saved_api_key = f.read().strip()
-
-if saved_api_key:
-    os.environ["GOOGLE_API_KEY"] = saved_api_key
-    genai.configure(api_key=saved_api_key)
-    if "active_model" not in st.session_state:
-        st.session_state.active_model = "gemini-1.5-flash"
-else:
-    if st.session_state.role != "admin":
-        st.error("Sistem yöneticisi henüz API anahtarı yapılandırmamış. Lütfen yöneticiye başvurun.")
-        st.stop()
 
 # --- ADMIN PANEL ---
 if st.session_state.role == "admin":
@@ -566,56 +747,29 @@ if st.session_state.role == "admin":
                     else:
                         st.error("Şifre boş olamaz!")
                         
-        with st.expander("⚙️ Sistem Ayarları (API)", expanded=False):
-            api_key = st.text_input("🔑 Gemini API Key", type="password", value=saved_api_key)
-            st.link_button("Kotamı Göster", "https://aistudio.google.com/app/apikey", use_container_width=True)
-            
-            if api_key:
-                if api_key != saved_api_key:
-                    with open(api_key_file, "w") as f:
-                        f.write(api_key)
-                    os.environ["GOOGLE_API_KEY"] = api_key
-                    genai.configure(api_key=api_key)
-                    
-                try:
-                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    st.success("✅ API Geçerli.")
-                    clean_models = [m.replace('models/', '') for m in available_models]
-                    default_idx = 0
-                    if 'gemini-1.5-flash' in clean_models:
-                        default_idx = clean_models.index('gemini-1.5-flash')
-                    elif 'gemini-2.5-flash' in clean_models:
-                        default_idx = clean_models.index('gemini-2.5-flash')
-                        
-                    st.session_state.active_model = st.selectbox(
-                        "Yapay Zeka Modeli:",
-                        options=clean_models,
-                        index=default_idx
-                    )
-                except Exception as e:
-                    st.error(f"Geçersiz API: {e}")
-                    st.stop()
-            else:
-                st.warning("API anahtarını girin.")
-                st.stop()
+        
 
+# Süreç kartları için görünüm kontrolü
+st.markdown("""
+<div class="section-intro">
+  <div><h3>Disiplin Süreci</h3><span>İlgili kartı açarak işleminize devam edin.</span></div>
+  <span>7 adım</span>
+</div>
+""", unsafe_allow_html=True)
 
-
-
-# Menüleri Toplu Aç/Kapat Butonları
 col_exp1, col_exp2 = st.columns(2)
 with col_exp1:
-    if st.button("🔽 Tüm Adımları Aç", use_container_width=True):
+    if st.button("Tüm Adımları Göster", use_container_width=True):
         st.session_state.expand_all = True
         st.rerun()
 with col_exp2:
-    if st.button("▶️ Tüm Adımları Kapat", use_container_width=True):
+    if st.button("Sade Görünüme Dön", use_container_width=True):
         st.session_state.expand_all = False
         st.session_state.step = 0
         st.rerun()
 
 # ----------------- ADIM 1: YÖNETMELİK -----------------
-with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 1)):
+with st.expander("01  •  Ön Hazırlık — Yönetmelik ve Kanunlar", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 1)):
     
     kb_dir = os.path.join(os.path.dirname(__file__), "knowledge_base")
     os.makedirs(kb_dir, exist_ok=True)
@@ -647,7 +801,7 @@ with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", ex
             
         yonetmelik_files = st.file_uploader("Kalıcı Belge Ekle (İş Kanunu vb.)", type=["docx", "pdf"], accept_multiple_files=True, key="permanent")
         if yonetmelik_files and st.button("Kalıcı Olarak Kaydet"):
-            with st.spinner("🏢 Yapay Zeka belgeleri kalıcı hafızasına kazıyor..."):
+            with st.spinner("Belgeler kalıcı hafızaya kaydediliyor..."):
                 for y_file in yonetmelik_files:
                     text = ""
                     if y_file.type == "application/pdf":
@@ -661,10 +815,7 @@ with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", ex
                             if len(extracted.strip()) > 50:
                                 text = f"--- Belge: {y_file.name} ---\n{extracted}"
                             else:
-                                doc_parts = [{"mime_type": "application/pdf", "data": pdf_bytes}, "Bu dokümandaki tüm metni eksiksiz olarak çıkar ve yaz."]
-                                model = genai.GenerativeModel(st.session_state.active_model)
-                                response = safe_generate(model, doc_parts)
-                                text = f"--- Belge: {y_file.name} ---\n{response.text}"
+                                st.warning(f"{y_file.name} içindeki metin okunamadı. Bu sürüm OCR kullanmaz; metni manuel olarak ekleyin.")
                         except Exception as e:
                             st.error(f"{y_file.name} Okuma hatası: {e}")
                     else:
@@ -693,8 +844,7 @@ with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", ex
                         for page in pdf_doc:
                             text += page.get_text()
                         if len(text.strip()) < 50:
-                            model = genai.GenerativeModel(st.session_state.active_model)
-                            text = safe_generate(model, [{"mime_type": "application/pdf", "data": g_file.getvalue()}, "Metne dök"]).text
+                            st.warning(f"{g_file.name} içindeki metin okunamadı. Bu sürüm OCR kullanmaz; metni manuel olarak ekleyin.")
                     else:
                         doc = Document(g_file)
                         text = "\n".join([p.text for p in doc.paragraphs])
@@ -710,57 +860,38 @@ with st.expander("🏢 1. Ön Hazırlık: Disiplin Yönetmeliği & Kanunlar", ex
         st.rerun()
 
 # ----------------- ADIM 2: TUTANAK YÜKLEME -----------------
-with st.expander("📝 2. Tutanak Yükleme ve Analizi", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 2)):
+with st.expander("02  •  Tutanak Yükleme ve Analizi", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 2)):
     st.write("Lütfen olaya ilişkin tutanağı PDF veya Word formatında yükleyin.")
     tutanak_file = st.file_uploader("Tutanak Seç", type=["pdf", "docx"])
     
     if tutanak_file:
-        if st.button("Tutanağı Analiz Et"):
-            with st.spinner("🏢 ISS Yapay Zeka tutanak detaylarını dijitalleştiriyor..."):
-                prompt_text = "Aşağıdaki tutanak belgesini incele. Çıktıyı SADECE geçerli bir JSON formatında ver. JSON yapısı şu şekilde olmalı: {\"name\": \"Hakkında tutanak tutulan çalışanın Adı ve Soyadı\", \"details\": \"Varsa sicil numarası ve unvanı (yoksa boş bırak)\", \"summary\": \"Olayın ne olduğu, tarihi ve ihlal edilen kuralların detaylı özeti\"}. Sadece JSON kodu döndür, başka hiçbir metin veya markdown yazma."
-                
-                try:
-                    if tutanak_file.type == "application/pdf":
-                        pdf_bytes = tutanak_file.getvalue()
-                        doc_parts = [
-                            {"mime_type": "application/pdf", "data": pdf_bytes},
-                            prompt_text
-                        ]
-                        model = genai.GenerativeModel(st.session_state.active_model)
-                        response = safe_generate(model, doc_parts)
-                        st.session_state.tutanak_text = "PDF doğrudan yapay zekaya okutuldu."
-                    else:
-                        doc = Document(tutanak_file)
-                        text = "\n".join([p.text for p in doc.paragraphs])
-                        st.session_state.tutanak_text = text
-                        prompt = f"{prompt_text}\n\nTutanak Metni: {text}"
-                        model = genai.GenerativeModel(st.session_state.active_model)
-                        response = safe_generate(model, prompt)
-                    
-                    # Parse JSON
-                    import json
-                    raw_text = response.text.replace("```json", "").replace("```", "").strip()
-                    try:
-                        parsed_data = json.loads(raw_text)
-                        emp_name = parsed_data.get("name", "Bilinmeyen Personel")
-                        emp_details = parsed_data.get("details", "")
-                        st.session_state.tutanak_summary = parsed_data.get("summary", "")
-                    except Exception as json_e:
-                        st.session_state.tutanak_summary = response.text
-                        emp_name = "Bilinmeyen Personel"
-                        emp_details = ""
-                    
-                    # Veritabanına kayıt
-                    if not st.session_state.get('current_record_id'):
-                        rec_id = hr_db.create_record(emp_name, emp_details, "Tutanak Tutuldu")
-                        st.session_state.current_record_id = rec_id
-                    save_current_state_to_db()
-                        
-                    hr_db.log_action(st.session_state.username, f"Yeni tutanak analiz etti ve dosya açtı: {emp_name}")
-                    st.success("Tutanak analiz edildi ve sistem kaydı otomatik oluşturuldu!")
-                    
-                except Exception as e:
-                    st.error(f"Bir hata oluştu: {e}")
+        try:
+            if tutanak_file.type == "application/pdf":
+                pdf_doc = fitz.open(stream=tutanak_file.getvalue(), filetype="pdf")
+                extracted_text = "\n".join(page.get_text() for page in pdf_doc)
+            else:
+                extracted_text = "\n".join(p.text for p in Document(tutanak_file).paragraphs)
+            st.session_state.tutanak_text = extracted_text
+        except Exception as error:
+            st.error(f"Tutanak metni okunamadı: {error}")
+            extracted_text = ""
+
+        st.caption("Tutanak metnini ve özet alanlarını gözden geçirerek kaydedin.")
+        emp_name = st.text_input("Çalışan Adı Soyadı", value=st.session_state.get("employee_name", ""))
+        emp_details = st.text_input("Sicil No / Unvan", value=st.session_state.get("employee_details", ""))
+        summary = st.text_area("Tutanak Özeti", value=st.session_state.get("tutanak_summary", extracted_text), height=220)
+        if st.button("Tutanağı Kaydet"):
+            if not emp_name.strip() or not summary.strip():
+                st.warning("Çalışan adı ve tutanak özeti zorunludur.")
+            else:
+                st.session_state.employee_name = emp_name.strip()
+                st.session_state.employee_details = emp_details.strip()
+                st.session_state.tutanak_summary = summary.strip()
+                if not st.session_state.get('current_record_id'):
+                    st.session_state.current_record_id = hr_db.create_record(emp_name.strip(), emp_details.strip(), "Tutanak Tutuldu")
+                save_current_state_to_db()
+                hr_db.log_action(st.session_state.username, f"Yeni tutanak kaydetti ve dosya açtı: {emp_name.strip()}")
+                st.success("Tutanak kaydedildi.")
             
     if st.session_state.tutanak_summary:
         st.subheader("Tutanak Özeti")
@@ -770,41 +901,23 @@ with st.expander("📝 2. Tutanak Yükleme ve Analizi", expanded=(st.session_sta
             st.rerun()
 
 # ----------------- ADIM 3: SAVUNMA İSTEMİ -----------------
-with st.expander("⚖️ 3. Savunma İstem Belgesi", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 3)):
+with st.expander("03  •  Savunma İstem Belgesi", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 3)):
     st.write("Tutanak özetine dayanarak çalışana verilecek resmi savunma istem metni oluşturuluyor.")
     
     if not st.session_state.tutanak_summary:
         st.warning("Lütfen önce 2. adımdan tutanak yükleyin.")
     else:
-        if st.button("Savunma İstem Metni Hazırla"):
-            with st.spinner("🏢 ISS Yapay Zeka hukuki metin hazırlıyor..."):
-                prompt = f"""Sen uzman bir İş Hukuku danışmanısın. Aşağıdaki tutanak özetine dayanarak bir 'Savunma İstem Metni' (SADECE GÖVDE METNİ) hazırla. 
-                
-                ÇOK ÖNEMLİ KURALLAR:
-                1. Mektup antetli kağıda basılacağı için KESİNLİKLE şirket adı, logo, tarih, adres, imza alanı gibi üst/alt bilgi kısımlarını YAZMA. Sadece mektubun içeriğini yaz.
-                2. KESİNLİKLE Markdown kullanma! Kalın yazı (**) veya madde işareti (-) kullanma. Sadece düz metin (plain text) paragrafları olsun.
-                3. Sadece konuya gir ve doğrudan çalışana hitaben yaz.
-                4. 4857 Sayılı İş Kanunu madde 109 uyarınca yazılı savunma istendiğini, 2 gün içerisinde savunma verilmesi gerektiğini belirt.
-                5. Bu yazıyı hazırlarken güncel mevzuat.gov.tr kaynaklarını ve İş Kanunu prensiplerini dikkate alan bir İş Hukukçusu gibi davran.
-                6. (ÇOK ÖNEMLİ) Aşağıda 'İlgili Yönetmelikler ve Kanunlar' kısmında sana sunulan (İş Kanunu, Personel Disiplin Yönetmeliği, Personel Sözleşmesi vb.) TÜM metinleri dikkate al. Çalışanın KESİNLİKLE bu metinlerin tam olarak hangi maddesini ve bendini ihlal ettiğini açıkça yazarak metnin içinde atıfta bulun (Örn: 'Şirket Personel Disiplin Yönetmeliği Madde 4.2 ve İş Kanunu Madde 25/II uyarınca...'). 
-                7. (ÖNEMLİ) Farklı konulara veya alt bölümlere geçtiğinde araya 1 TAM SATIR (ENTER) BOŞLUK BIRAK ki yazılar iç içe geçmesin.
-                8. (TON VE USUL) Metni tehditkar veya suçlayıcı bir dille DEĞİL, son derece kurumsal, objektif ve profesyonel bir dille yaz.
-                9. (KAPANIŞ) Metnin en sonunu KESİNLİKLE 'Saygılarımızla,' diyerek bitir.
-                
-                İlgili Yönetmelikler ve Kanunlar (Eğer yüklendiyse):
-                {st.session_state.yonetmelik_text if st.session_state.yonetmelik_text else 'Belirtilmedi'}
-                
-                Tutanak Özeti:
-                {st.session_state.tutanak_summary}
-                """
-                model = genai.GenerativeModel(st.session_state.active_model)
-                response = safe_generate(model, prompt)
-                st.session_state.savunma_istem_metni = response.text
-                
+        st.caption("Savunma istem metnini kontrol ederek buraya girin.")
+        st.session_state.savunma_istem_metni = st.text_area("Savunma İstem Metni", value=st.session_state.get("savunma_istem_metni", ""), height=300)
+        if st.button("Savunma İstemini Kaydet"):
+            if not st.session_state.savunma_istem_metni.strip():
+                st.warning("Kaydetmek için metni girin.")
+            else:
                 if st.session_state.get('current_record_id'):
                     hr_db.update_status(st.session_state.current_record_id, "Savunma Bekleniyor")
                     save_current_state_to_db()
-                    hr_db.log_action(st.session_state.username, f"Savunma istem belgesi üretti.")
+                hr_db.log_action(st.session_state.username, "Savunma istem belgesini kaydetti.")
+                st.success("Savunma istem metni kaydedildi.")
                 
         if st.session_state.savunma_istem_metni:
             st.text_area("Oluşturulan Metin", st.session_state.savunma_istem_metni, height=300)
@@ -817,33 +930,28 @@ with st.expander("⚖️ 3. Savunma İstem Belgesi", expanded=(st.session_state.
                 st.rerun()
 
 # ----------------- ADIM 4: SAVUNMA YÜKLEME -----------------
-with st.expander("🛡️ 4. Çalışan Savunması ve Değerlendirme", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 4)):
+with st.expander("04  •  Çalışan Savunması ve Değerlendirme", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 4)):
     st.write("Çalışanın el yazısı ile teslim ettiği PDF formatındaki savunmayı yükleyin.")
     savunma_file = st.file_uploader("Savunma Seç", type=["pdf"])
     
     if savunma_file:
-        if st.button("Savunmayı Oku ve Özetle"):
-            with st.spinner("🏢 ISS Yapay Zeka el yazısını (OCR) okuyup analiz ediyor..."):
-                try:
-                    pdf_bytes = savunma_file.getvalue()
-                    doc_parts = [
-                        {"mime_type": "application/pdf", "data": pdf_bytes},
-                        "Bu PDF dosyasındaki el yazısı savunmayı oku ve metne dök. Sonrasında çalışanın temel argümanlarını 3-4 maddede özetle."
-                    ]
-                    model = genai.GenerativeModel(st.session_state.active_model)
-                    response = safe_generate(model, doc_parts)
-                    st.session_state.savunma_text = response.text
-                    
-                    if st.session_state.get('current_record_id'):
-                        hr_db.update_status(st.session_state.current_record_id, "Savunma Alındı")
-                        save_current_state_to_db()
-                        
-                    hr_db.log_action(st.session_state.username, "Personele ait PDF savunmayı yükledi ve okuttu.")
-                    st.success("Savunma metni dosyaya işlendi.")
-                except Exception as e:
-                    st.error(f"OCR hatası: {e}")
-            
-            st.success("Savunma okundu!")
+        try:
+            pdf_doc = fitz.open(stream=savunma_file.getvalue(), filetype="pdf")
+            extracted_defense = "\n".join(page.get_text() for page in pdf_doc)
+        except Exception as error:
+            st.error(f"Savunma dosyası okunamadı: {error}")
+            extracted_defense = ""
+        st.caption("El yazısı OCR bu uygulamada çalıştırılmaz. Okunamayan kısımları çözümlenmiş metin olarak buraya girin.")
+        st.session_state.savunma_text = st.text_area("Çalışan Savunması", value=st.session_state.get("savunma_text", extracted_defense), height=260)
+        if st.button("Savunmayı Kaydet"):
+            if not st.session_state.savunma_text.strip():
+                st.warning("Kaydetmek için savunma metnini girin.")
+            else:
+                if st.session_state.get('current_record_id'):
+                    hr_db.update_status(st.session_state.current_record_id, "Savunma Alındı")
+                    save_current_state_to_db()
+                hr_db.log_action(st.session_state.username, "Personele ait savunmayı kaydetti.")
+                st.success("Savunma metni kaydedildi.")
             
     if st.session_state.savunma_text:
         st.subheader("Çalışan Savunması (Çözümlenmiş)")
@@ -853,44 +961,21 @@ with st.expander("🛡️ 4. Çalışan Savunması ve Değerlendirme", expanded=
             st.rerun()
 
 # ----------------- ADIM 5: KARAR MOTORU -----------------
-with st.expander("🧠 5. Nihai Karar Motoru", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 5)):
+with st.expander("05  •  Nihai Karar Değerlendirmesi", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 5)):
     st.write("Şirket yönetmeliği, tutanak, savunma, İş Kanunu ve Yargıtay İçtihatları çerçevesinde değerlendirme yapılır.")
     
-    if st.button("Karar Önerisi Al"):
-        with st.spinner("🏢 ISS Karar Motoru kanunları tarayıp hüküm veriyor..."):
-            prompt = f"""Sen bir uzman İnsan Kaynakları ve İş Hukuku yöneticisisin (İş Hukukçusu). 
-            Elimizde aşağıdaki veriler var:
-            
-            Tutanak Özeti: {st.session_state.tutanak_summary}
-            
-            Çalışanın Savunması: {st.session_state.savunma_text}
-            
-            İlgili Yönetmelikler ve Kanunlar: {st.session_state.yonetmelik_text if st.session_state.yonetmelik_text else 'Belirtilmedi, genel İş Kanunu hükümlerini baz al.'}
-            
-            ÇOK ÖNEMLİ KURALLAR:
-            1. Üreteceğin bu Nihai Karar Belgesi doğrudan resmi şablona basılacaktır. Bu yüzden BAŞLIK, LOGO, TARİH, İMZA, ADRES gibi antetli kağıt bilgilerini ASLA yazma. Sadece kararın ana metnini yaz.
-            1.5. (ÇOK ÖNEMLİ) Kararını verirken KESİNLİKLE 'İlgili Yönetmelikler ve Kanunlar' bölümünde sana sağlanan (İş Kanunu, Sözleşme, Yönetmelik vb.) TÜM metinleri detaylıca incele ve cımbızlayarak alıntı yap. Hangi belgenin hangi maddesinin ihlal edildiğini açıkça belirterek dayanak göster.
-            2. Görev: Çalışanın savunmasını, tutanak ile kıyaslayarak (varsa çelişkiler) analiz et.
-            3. Görev: Savunmadaki gerekçelerin hukuki geçerliliğini değerlendir.
-            4. Görev (DEEP RESEARCH): İlgili konuyu internette güncel Yargıtay İçtihatları ve emsal kararlar ışığında derinlemesine araştır. Durumu değerlendirerek yöneticiye hangi idari işlemin / aksiyonun en uygun olacağı yönünde BİR ÖNERİDE BULUN ("Bu duruma göre benim önerim ... aksiyonunu almak yönündedir" şeklinde belirt). Kararını hukuki bir temele oturt ve araştırdığın güncel örnek Yargıtay içtihadı (Tarih, Esas ve Karar numaralarıyla birlikte) ile destekle. Kesinlikle güncel mevzuat.gov.tr standartlarını referans al ve ezbere hüküm kurma.
-            5. (ÖNEMLİ) Farklı konulara veya alt bölümlere geçtiğinde araya 1 TAM SATIR (ENTER) BOŞLUK BIRAK ki yazılar iç içe geçmesin.
-            """
-            
-            # Gemini Pro'yu zorla (Deep Research için en uygun olan)
-            pro_model_name = 'gemini-1.5-pro'
-            if hasattr(genai, 'list_models'):
-                models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                if 'models/gemini-2.5-pro' in models:
-                    pro_model_name = 'gemini-2.5-pro'
-                elif 'models/gemini-1.5-pro' in models:
-                    pro_model_name = 'gemini-1.5-pro'
-                    
-            model = genai.GenerativeModel(pro_model_name)
-            response = safe_generate(model, prompt, enable_search=True)
-            st.session_state.karar_sonucu = response.text
+    st.caption("Değerlendirme notunuzu buraya girin. Nihai karar yetkili yönetici onayıyla verilir.")
+    st.session_state.karar_sonucu = st.text_area("Karar Değerlendirme Notu", value=st.session_state.get("karar_sonucu", ""), height=300)
+    if st.button("Değerlendirmeyi Kaydet"):
+        if st.session_state.karar_sonucu.strip():
+            save_current_state_to_db()
+            hr_db.log_action(st.session_state.username, "Karar değerlendirme notunu kaydetti.")
+            st.success("Değerlendirme notu kaydedildi.")
+        else:
+            st.warning("Kaydetmek için değerlendirme notunu girin.")
             
     if st.session_state.karar_sonucu:
-        st.subheader("Yapay Zeka Karar Önerisi ve Gerekçesi")
+        st.subheader("Karar Değerlendirme Notu ve Gerekçesi")
         st.write(st.session_state.karar_sonucu)
         
         st.markdown("### ✍️ Yönetici Kararı (Sizin Seçiminiz)")
@@ -907,29 +992,19 @@ with st.expander("🧠 5. Nihai Karar Motoru", expanded=(st.session_state.get('e
             st.rerun()
 
 # ----------------- ADIM 6: KARAR ÇIKTISI -----------------
-with st.expander("📄 6. Resmi Karar Çıktısı", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 6)):
+with st.expander("06  •  Resmî Karar Çıktısı", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 6)):
     st.write("Verilen karara uygun nihai bildirim metni.")
     
     if st.session_state.karar_sonucu:
-        if st.button("Nihai Belgeyi Oluştur"):
-            with st.spinner("🏢 ISS Yapay Zeka resmi karar belgesini üretiyor..."):
-                prompt = f"""Yönetici, çalışan hakkında "{st.session_state.get('secilen_karar', 'Yazılı Uyarı')}" işleminin uygulanmasına karar vermiştir.
-                Aşağıdaki AI analiz raporunu baz alarak, yöneticinin seçtiği bu nihai karara ({st.session_state.get('secilen_karar', 'Yazılı Uyarı')}) uygun, resmi bir "İdari İşlem/Karar Bildirimi" (SADECE GÖVDE METNİ) hazırla. 
-                
-                ÇOK ÖNEMLİ KURALLAR:
-                1. Üreteceğin bu Nihai Bildirim Belgesi doğrudan resmi şablona basılacaktır. Bu yüzden BAŞLIK, LOGO, TARİH, İMZA, ADRES gibi antetli kağıt bilgilerini ASLA yazma. Sadece bildirimin ana metnini yaz.
-                2. Kesinlikle Markdown formatı (**) veya madde işareti (-) KULLANMA. Düz metin paragrafları olarak üret.
-                3. (ÇOK ÖNEMLİ) Karar özetinde geçen TÜM yasa maddelerini, "Şirket Personel Yönetmeliği Madde X", "İş Kanunu Madde Y" ve Yargıtay emsal kararlarını bildirim metninin içerisine KESİNLİKLE yedir. Çalışana, eyleminin tam olarak hangi kurum kurallarını ve sözleşme maddesini ihlal ettiğini net olarak bildir.
-                4. (TON VE USUL) Metni tehditkar veya suçlayıcı bir dille DEĞİL, son derece kurumsal, objektif ve profesyonel bir dille yaz.
-                5. (KAPANIŞ) Metnin en sonunu KESİNLİKLE 'Saygılarımızla,' diyerek bitir.
-                6. (KELİME KULLANIMI) Metinde KESİNLİKLE 'ceza', 'cezalandırılmıştır', 'ceza verilmiştir' gibi negatif kelimeler KULLANMA. Bunun yerine 'idari işlem uygulanmıştır', 'aksiyon alınmıştır', 'karar verilmiştir' gibi pozitif ve yapıcı kurumsal ifadeler kullan.
-                
-                Yapay Zeka Analiz Özeti: {st.session_state.karar_sonucu}
-                """
-                model = genai.GenerativeModel(st.session_state.active_model)
-                response = safe_generate(model, prompt)
-                st.session_state.nihai_belge = response.text
+        st.caption("Nihai bildirim metnini kontrol ederek buraya girin.")
+        st.session_state.nihai_belge = st.text_area("Nihai Belge Metni", value=st.session_state.get("nihai_belge", ""), height=300)
+        if st.button("Nihai Belgeyi Kaydet"):
+            if st.session_state.nihai_belge.strip():
                 save_current_state_to_db()
+                hr_db.log_action(st.session_state.username, "Nihai belge metnini kaydetti.")
+                st.success("Nihai belge kaydedildi.")
+            else:
+                st.warning("Kaydetmek için nihai belge metnini girin.")
                 
     if st.session_state.nihai_belge:
         st.text_area("Nihai Belge", st.session_state.nihai_belge, height=300)
@@ -939,7 +1014,7 @@ with st.expander("📄 6. Resmi Karar Çıktısı", expanded=(st.session_state.g
         st.download_button("Word Olarak İndir (DOCX)", data=docx_file, file_name="karar_bildirimi.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 # ----------------- ADIM 7: DOSYA TAKİBİ -----------------
-with st.expander("📂 7. Dosya ve Süreç Takibi (Arşiv)", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 7)):
+with st.expander("07  •  Dosya ve Süreç Takibi", expanded=(st.session_state.get('expand_all', False) or st.session_state.step == 7)):
     st.write("Sistemdeki tüm disiplin dosyalarının güncel durumları.")
     
     records = hr_db.get_all_records()
